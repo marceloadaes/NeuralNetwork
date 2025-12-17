@@ -40,6 +40,10 @@ export const PixelGrid28x28 = forwardRef<PixelGridHandle, PixelGrid28x28Props>(
       gridRef.current = grid;
     }, [grid]);
 
+    const stopDrawing = useCallback(() => {
+      isDrawingRef.current = false;
+    }, []);
+
     const setCell = useCallback((row: number, col: number, value: number) => {
       const index = row * GRID_SIZE + col;
 
@@ -77,10 +81,6 @@ export const PixelGrid28x28 = forwardRef<PixelGridHandle, PixelGrid28x28Props>(
       },
       [paintFromEvent],
     );
-
-    const stopDrawing = useCallback(() => {
-      isDrawingRef.current = false;
-    }, []);
 
     const clear = useCallback(() => {
       setGrid(new Array(TOTAL_CELLS).fill(0));
