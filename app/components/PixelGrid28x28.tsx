@@ -35,6 +35,8 @@ export const PixelGrid28x28 = forwardRef<PixelGridHandle, PixelGrid28x28Props>(
     const [grid, setGrid] = useState<number[]>(() => new Array(TOTAL_CELLS).fill(0));
     const gridRef = useRef(grid);
     const isDrawingRef = useRef(false);
+    const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+    const containerRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
       gridRef.current = grid;
@@ -42,44 +44,117 @@ export const PixelGrid28x28 = forwardRef<PixelGridHandle, PixelGrid28x28Props>(
 
     const stopDrawing = useCallback(() => {
       isDrawingRef.current = false;
+      lastPointRef.current = null;
     }, []);
 
     const setCell = useCallback((row: number, col: number, value: number) => {
       const index = row * GRID_SIZE + col;
 
       setGrid((previous) => {
-        if (previous[index] === value) return previous;
+        const nextValue = Math.min(1, Math.max(previous[index], value));
+        if (previous[index] === nextValue) return previous;
         const next = [...previous];
-        next[index] = value;
+        next[index] = nextValue;
         return next;
       });
     }, []);
 
-    const paintFromEvent = useCallback(
-      (event: PointerEvent<HTMLDivElement>, row: number, col: number) => {
-        // Usa a pressão do toque se disponível para permitir tons de cinza mais suaves.
-        const pressure = event.pressure && event.pressure > 0 ? event.pressure : 1;
-        const intensity = Math.min(1, Math.max(0, pressure));
-        setCell(row, col, intensity);
+    const getCellFromPosition = useCallback(
+      (position: { x: number; y: number }) => {
+        const col = Math.floor(position.x / cellSize);
+        const row = Math.floor(position.y / cellSize);
+        if (row < 0 || row >= GRID_SIZE || col < 0 || col >= GRID_SIZE) return null;
+
+        const centerX = (col + 0.5) * cellSize;
+        const centerY = (row + 0.5) * cellSize;
+        const distance = Math.hypot(position.x - centerX, position.y - centerY);
+        const maxDistance = (cellSize / 2) * Math.SQRT2;
+        const intensity = Math.max(0, 1 - distance / maxDistance);
+
+        if (intensity <= 0) return null;
+
+        return { row, col, intensity };
       },
-      [setCell],
+      [cellSize],
     );
+
+    const paintAtPosition = useCallback(
+      (position: { x: number; y: number }) => {
+        const cell = getCellFromPosition(position);
+        if (!cell) return;
+
+        setCell(cell.row, cell.col, cell.intensity);
+      },
+      [getCellFromPosition, setCell],
+    );
+
+    const paintLineToPosition = useCallback(
+      (position: { x: number; y: number }) => {
+        const previous = lastPointRef.current;
+        if (!previous) {
+          paintAtPosition(position);
+          lastPointRef.current = position;
+          return;
+        }
+
+        const deltaX = position.x - previous.x;
+        const deltaY = position.y - previous.y;
+        const distance = Math.hypot(deltaX, deltaY);
+        const steps = Math.max(1, Math.ceil(distance / (cellSize / 2)));
+
+        for (let step = 1; step <= steps; step++) {
+          const t = step / steps;
+          paintAtPosition({
+            x: previous.x + deltaX * t,
+            y: previous.y + deltaY * t,
+          });
+        }
+
+        lastPointRef.current = position;
+      },
+      [cellSize, paintAtPosition],
+    );
+
+    const getPointerPosition = useCallback((event: PointerEvent<HTMLDivElement>) => {
+      const container = containerRef.current;
+      if (!container) return null;
+
+      const rect = container.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+
+      if (Number.isNaN(x) || Number.isNaN(y)) return null;
+
+      return { x, y };
+    }, []);
 
     const handlePointerDown = useCallback(
-      (event: PointerEvent<HTMLDivElement>, row: number, col: number) => {
+      (event: PointerEvent<HTMLDivElement>) => {
         event.preventDefault();
+        const position = getPointerPosition(event);
+        if (!position) return;
+
         isDrawingRef.current = true;
-        paintFromEvent(event, row, col);
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+        paintLineToPosition(position);
       },
-      [paintFromEvent],
+      [getPointerPosition, paintLineToPosition],
     );
 
-    const handlePointerEnter = useCallback(
-      (event: PointerEvent<HTMLDivElement>, row: number, col: number) => {
-        if (!isDrawingRef.current || event.buttons === 0) return;
-        paintFromEvent(event, row, col);
+    const handlePointerMove = useCallback(
+      (event: PointerEvent<HTMLDivElement>) => {
+        if (!isDrawingRef.current) return;
+        if (event.buttons === 0) {
+          stopDrawing();
+          return;
+        }
+
+        const position = getPointerPosition(event);
+        if (!position) return;
+
+        paintLineToPosition(position);
       },
-      [paintFromEvent],
+      [getPointerPosition, paintLineToPosition, stopDrawing],
     );
 
     const clear = useCallback(() => {
@@ -109,6 +184,9 @@ export const PixelGrid28x28 = forwardRef<PixelGridHandle, PixelGrid28x28Props>(
             border: "1px solid #d1d5db",
             touchAction: "none",
           }}
+          ref={containerRef}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
           onPointerUp={stopDrawing}
           onPointerCancel={stopDrawing}
           onPointerLeave={stopDrawing}
@@ -131,8 +209,6 @@ export const PixelGrid28x28 = forwardRef<PixelGridHandle, PixelGrid28x28Props>(
                     backgroundColor: color,
                     touchAction: "none",
                   }}
-                  onPointerDown={(event) => handlePointerDown(event, row, col)}
-                  onPointerEnter={(event) => handlePointerEnter(event, row, col)}
                 />
               );
             }),
