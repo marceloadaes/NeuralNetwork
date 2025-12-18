@@ -144,17 +144,29 @@ export const PixelGrid28x28 = forwardRef<PixelGridHandle, PixelGrid28x28Props>(
     const handlePointerMove = useCallback(
       (event: PointerEvent<HTMLDivElement>) => {
         if (!isDrawingRef.current) return;
-        if (event.buttons === 0) {
-          stopDrawing();
-          return;
-        }
-
+        event.preventDefault();
         const position = getPointerPosition(event);
         if (!position) return;
 
         paintLineToPosition(position);
       },
-      [getPointerPosition, paintLineToPosition, stopDrawing],
+      [getPointerPosition, paintLineToPosition],
+    );
+
+    const handlePointerUp = useCallback(
+      (event: PointerEvent<HTMLDivElement>) => {
+        stopDrawing();
+        event.currentTarget.releasePointerCapture?.(event.pointerId);
+      },
+      [stopDrawing],
+    );
+
+    const handlePointerCancel = useCallback(
+      (event: PointerEvent<HTMLDivElement>) => {
+        stopDrawing();
+        event.currentTarget.releasePointerCapture?.(event.pointerId);
+      },
+      [stopDrawing],
     );
 
     const clear = useCallback(() => {
@@ -187,8 +199,8 @@ export const PixelGrid28x28 = forwardRef<PixelGridHandle, PixelGrid28x28Props>(
           ref={containerRef}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
-          onPointerUp={stopDrawing}
-          onPointerCancel={stopDrawing}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
           onPointerLeave={stopDrawing}
         >
           {Array.from({ length: GRID_SIZE }).map((_, row) =>
