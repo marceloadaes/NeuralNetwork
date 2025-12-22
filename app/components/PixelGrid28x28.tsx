@@ -4,6 +4,7 @@ import {
   forwardRef,
   type PointerEvent,
   type RefObject,
+  type TouchEvent,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -115,18 +116,23 @@ export const PixelGrid28x28 = forwardRef<PixelGridHandle, PixelGrid28x28Props>(
       [cellSize, paintAtPosition],
     );
 
-    const getPointerPosition = useCallback((event: PointerEvent<HTMLDivElement>) => {
+    const getPositionFromClient = useCallback((clientX: number, clientY: number) => {
       const container = containerRef.current;
       if (!container) return null;
 
       const rect = container.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
 
       if (Number.isNaN(x) || Number.isNaN(y)) return null;
 
       return { x, y };
     }, []);
+
+    const getPointerPosition = useCallback(
+      (event: PointerEvent<HTMLDivElement>) => getPositionFromClient(event.clientX, event.clientY),
+      [getPositionFromClient],
+    );
 
     const handlePointerDown = useCallback(
       (event: PointerEvent<HTMLDivElement>) => {
@@ -140,6 +146,39 @@ export const PixelGrid28x28 = forwardRef<PixelGridHandle, PixelGrid28x28Props>(
       },
       [getPointerPosition, paintLineToPosition],
     );
+
+    const handleTouchStart = useCallback(
+      (event: TouchEvent<HTMLDivElement>) => {
+        const touch = event.touches[0];
+        if (!touch) return;
+
+        const position = getPositionFromClient(touch.clientX, touch.clientY);
+        if (!position) return;
+
+        isDrawingRef.current = true;
+        paintLineToPosition(position);
+      },
+      [getPositionFromClient, paintLineToPosition],
+    );
+
+    const handleTouchMove = useCallback(
+      (event: TouchEvent<HTMLDivElement>) => {
+        if (!isDrawingRef.current) return;
+        const touch = event.touches[0] ?? event.changedTouches[0];
+        if (!touch) return;
+
+        event.preventDefault();
+        const position = getPositionFromClient(touch.clientX, touch.clientY);
+        if (!position) return;
+
+        paintLineToPosition(position);
+      },
+      [getPositionFromClient, paintLineToPosition],
+    );
+
+    const handleTouchEnd = useCallback(() => {
+      stopDrawing();
+    }, [stopDrawing]);
 
     const handlePointerMove = useCallback(
       (event: PointerEvent<HTMLDivElement>) => {
@@ -202,6 +241,10 @@ export const PixelGrid28x28 = forwardRef<PixelGridHandle, PixelGrid28x28Props>(
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerCancel}
           onPointerLeave={stopDrawing}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchEnd}
         >
           {Array.from({ length: GRID_SIZE }).map((_, row) =>
             Array.from({ length: GRID_SIZE }).map((__, col) => {
